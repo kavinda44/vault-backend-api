@@ -12,10 +12,14 @@ import sqlite3
 app = FastAPI(title="Secure Banking Prototype API")
 database.init_db() 
 
-# Configure CORS
+# Configure CORS (Securely locked to your Vercel and Local environments)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], 
+    allow_origins=[
+        "https://vault-frontend-app.vercel.app", 
+        "http://localhost:5173",                 
+        "http://localhost:3000"                  
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -52,7 +56,6 @@ class LoginRequest(BaseModel):
 class ForgotPasswordRequest(BaseModel):
     email: str
 
-# --- UPDATED: Profile Model (No Email, Optional Passwords) ---
 class ProfileUpdateRequest(BaseModel):
     current_username: str
     new_username: str
@@ -85,11 +88,9 @@ def register(request: RegisterRequest):
 
 @app.get("/verify/{token}")
 def verify_email(token: str):
-
     if database.verify_user_in_db(token):
-       
         from fastapi.responses import HTMLResponse
-        return HTMLResponse("<h2> Email Verified Successfully! You can now close this tab and log in.</h2>")
+        return HTMLResponse("<h2> ✅ Email Verified Successfully! You can now close this tab and log in.</h2>")
     
     raise HTTPException(status_code=400, detail="Invalid or expired verification token.")
 
@@ -149,7 +150,6 @@ def login(request: LoginRequest, fastapi_req: Request):
         "email": user.get("email", "") 
     }
 
-# --- UPDATED: REAL PROFILE UPDATE ROUTE ---
 @app.post("/user/update")
 def update_profile(req: ProfileUpdateRequest):
     conn = sqlite3.connect("secure_bank.db")
@@ -226,7 +226,6 @@ def request_transfer(request: TransferRequest):
 
 @app.post("/transfer/verify")
 def verify_transfer(request: VerifyTransferRequest):
-    
     pending = PENDING_TRANSFERS.get(request.username)
     if not pending:
         raise HTTPException(status_code=400, detail="No pending transfer found.")
@@ -237,11 +236,10 @@ def verify_transfer(request: VerifyTransferRequest):
 
     if request.otp != pending["otp"]:
         raise HTTPException(status_code=401, detail="Invalid OTP code.")
-
     
     encrypted_amount = security_helpers.encrypt_data(str(pending["amount"]))
     
-    # NEW: Actually move the money in the database
+    # Actually move the money in the database
     success = database.execute_secure_transfer(
         request.username, pending["recipient"], pending["amount"], encrypted_amount
     )
@@ -266,7 +264,6 @@ def forgot_password(request: ForgotPasswordRequest):
     if database.set_reset_token(request.email, token):
         security_helpers.send_password_reset_email(request.email, token)
         
-   
     return {"message": "If an account exists with that email, a reset link has been sent."}
 
 
@@ -291,10 +288,9 @@ def reset_password_page(token: str):
 
 @app.post("/reset-password-confirm")
 def reset_password_confirm(token: str = Form(...), new_password: str = Form(...)):
-    
     hashed_pw = security_helpers.hash_password(new_password)
     
     if database.update_password_with_token(token, hashed_pw):
-        return HTMLResponse("<h2 style='text-align:center; margin-top:50px; font-family:sans-serif;'> Password updated securely! You can safely close this tab and log in to the website.</h2>")
+        return HTMLResponse("<h2 style='text-align:center; margin-top:50px; font-family:sans-serif;'> ✅ Password updated securely! You can safely close this tab and log in to the website.</h2>")
     
     raise HTTPException(status_code=400, detail="Invalid or expired reset token.")
