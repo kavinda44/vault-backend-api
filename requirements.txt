@@ -6,3 +6,4 @@ passlib
 python-multipart==0.0.22
 python-dotenv
 cryptography
+requests

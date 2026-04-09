@@ -1,11 +1,10 @@
 import secrets
 import bcrypt
 from cryptography.fernet import Fernet
-import smtplib
-from email.message import EmailMessage
 import os
 from dotenv import load_dotenv
 import random
+import requests
 
 load_dotenv()
 
@@ -46,95 +45,103 @@ def decrypt_data(encrypted_data: str) -> str:
     return decrypted_text.decode('utf-8')
 
 
-# 3. SECURE PROTOCOLS (Secure Mail)
+# 3. SECURE PROTOCOLS (Secure Mail via Brevo API)
 
 def generate_verification_token() -> str:
     """Generates a cryptographically secure random token for email links."""
     return secrets.token_urlsafe(32)
 
 def send_real_secure_email(receiver_email: str, token: str):
-    """
-    Sends a real email securely over SMTPS using Gmail.
-    """
+    """Sends a real email securely over HTTP using the Brevo API."""
+    api_key = os.getenv("BREVO_API_KEY")
     sender_email = os.getenv("GMAIL_ADDRESS")
-    app_password = os.getenv("GMAIL_APP_PASSWORD")
     
-    if not sender_email or not app_password:
-        print(" Error: Missing Gmail credentials in Environment Variables.")
+    if not api_key or not sender_email:
+        print(" Error: Missing BREVO_API_KEY or GMAIL_ADDRESS in Environment Variables.")
         return
 
-    msg = EmailMessage()
-    msg['Subject'] = 'Verify your Secure Bank Account'
-    msg['From'] = sender_email
-    msg['To'] = receiver_email
-
-    # UPDATED: Pointing to your live Render server!
     verification_link = f"https://vault-backend-api-szxu.onrender.com/verify/{token}"
-    msg.set_content(f"Welcome to Secure Bank!\n\nPlease click the secure link below to verify your identity:\n{verification_link}")
+    
+    url = "https://api.brevo.com/v3/smtp/email"
+    headers = {
+        "accept": "application/json",
+        "api-key": api_key,
+        "content-type": "application/json"
+    }
+    payload = {
+        "sender": {"name": "Secure Vault Support", "email": sender_email},
+        "to": [{"email": receiver_email}],
+        "subject": "Verify your Secure Bank Account",
+        "htmlContent": f"<h3>Welcome to Secure Bank!</h3><p>Please click the secure link below to verify your identity:</p><p><a href='{verification_link}'>{verification_link}</a></p>"
+    }
 
     try:
-        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
-            smtp.login(sender_email, app_password)
-            smtp.send_message(msg)
-        print(f" Real email securely sent to {receiver_email}!")
+        response = requests.post(url, json=payload, headers=headers)
+        response.raise_for_status()
+        print(f" Real API email securely sent to {receiver_email}!")
     except Exception as e:
-        print(f" Failed to send email: {e}")
+        print(f" Failed to send API email: {e}")
 
 def send_password_reset_email(receiver_email: str, token: str):
-    """Sends a real password reset email securely via Gmail."""
+    """Sends a password reset email securely via the Brevo API."""
+    api_key = os.getenv("BREVO_API_KEY")
     sender_email = os.getenv("GMAIL_ADDRESS")
-    app_password = os.getenv("GMAIL_APP_PASSWORD")
     
-    if not sender_email or not app_password:
-        print("Missing Gmail credentials.")
+    if not api_key or not sender_email:
+        print("Missing API credentials.")
         return
 
-    msg = EmailMessage()
-    msg['Subject'] = 'Secure Bank - Password Reset Request'
-    msg['From'] = sender_email
-    msg['To'] = receiver_email
-
-    # UPDATED: Pointing to your live Render server!
     reset_link = f"https://vault-backend-api-szxu.onrender.com/reset-password-page/{token}"
-    msg.set_content(f"We received a request to reset your password.\n\nPlease click the secure link below to create a new password:\n{reset_link}\n\nIf you did not request this, please ignore this email.")
+    
+    url = "https://api.brevo.com/v3/smtp/email"
+    headers = {
+        "accept": "application/json",
+        "api-key": api_key,
+        "content-type": "application/json"
+    }
+    payload = {
+        "sender": {"name": "Secure Vault Security", "email": sender_email},
+        "to": [{"email": receiver_email}],
+        "subject": "Secure Bank - Password Reset Request",
+        "htmlContent": f"<h3>Password Reset Request</h3><p>Please click the secure link below to create a new password:</p><p><a href='{reset_link}'>{reset_link}</a></p><p>If you did not request this, please ignore this email.</p>"
+    }
 
     try:
-        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
-            smtp.login(sender_email, app_password)
-            smtp.send_message(msg)
-        print(f"Password reset email sent to {receiver_email}!")
+        response = requests.post(url, json=payload, headers=headers)
+        response.raise_for_status()
+        print(f"Password reset API email sent to {receiver_email}!")
     except Exception as e:
-        print(f"Failed to send reset email: {e}")
-
+        print(f"Failed to send reset API email: {e}")
 
 def generate_otp() -> str:
     """Generates a random 6-digit OTP code."""
     return str(random.randint(100000, 999999))
 
 def send_transfer_otp_email(receiver_email: str, otp: str, amount: str, recipient: str):
-    """Sends a 6-digit OTP to authorize a transfer."""
+    """Sends a 6-digit OTP to authorize a transfer via the Brevo API."""
+    api_key = os.getenv("BREVO_API_KEY")
     sender_email = os.getenv("GMAIL_ADDRESS")
-    app_password = os.getenv("GMAIL_APP_PASSWORD")
     
-    if not sender_email or not app_password:
-        print("Missing Gmail credentials.")
+    if not api_key or not sender_email:
+        print("Missing API credentials.")
         return
 
-    msg = EmailMessage()
-    msg['Subject'] = f'Secure Bank - Transfer Authorization (OTP: {otp})'
-    msg['From'] = sender_email
-    msg['To'] = receiver_email
-
-    msg.set_content(
-        f"You requested a transfer of ${amount} to account {recipient}.\n\n"
-        f"Your One-Time Password (OTP) is: {otp}\n\n"
-        f"This code will expire in 5 minutes. If you did not request this, please contact support immediately."
-    )
+    url = "https://api.brevo.com/v3/smtp/email"
+    headers = {
+        "accept": "application/json",
+        "api-key": api_key,
+        "content-type": "application/json"
+    }
+    payload = {
+        "sender": {"name": "Secure Vault Transfers", "email": sender_email},
+        "to": [{"email": receiver_email}],
+        "subject": f"Secure Bank - Transfer Authorization (OTP: {otp})",
+        "htmlContent": f"<h3>Transfer Authorization Request</h3><p>You requested a transfer of <strong>${amount}</strong> to account <strong>{recipient}</strong>.</p><p>Your One-Time Password (OTP) is: <h2 style='color:blue;'>{otp}</h2></p><p>This code will expire in 5 minutes.</p>"
+    }
 
     try:
-        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
-            smtp.login(sender_email, app_password)
-            smtp.send_message(msg)
-        print(f"OTP email sent to {receiver_email}!")
+        response = requests.post(url, json=payload, headers=headers)
+        response.raise_for_status()
+        print(f"OTP API email sent to {receiver_email}!")
     except Exception as e:
-        print(f"Failed to send OTP email: {e}")
+        print(f"Failed to send OTP API email: {e}")
