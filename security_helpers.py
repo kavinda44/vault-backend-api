@@ -7,12 +7,9 @@ import os
 from dotenv import load_dotenv
 import random
 
-
 load_dotenv()
 
-
 # HASHING (Password Security)
-
 
 def hash_password(plain_text_password: str) -> str:
     """
@@ -51,7 +48,6 @@ def decrypt_data(encrypted_data: str) -> str:
 
 # 3. SECURE PROTOCOLS (Secure Mail)
 
-
 def generate_verification_token() -> str:
     """Generates a cryptographically secure random token for email links."""
     return secrets.token_urlsafe(32)
@@ -64,20 +60,19 @@ def send_real_secure_email(receiver_email: str, token: str):
     app_password = os.getenv("GMAIL_APP_PASSWORD")
     
     if not sender_email or not app_password:
-        print(" Error: Missing Gmail credentials in .env file.")
+        print(" Error: Missing Gmail credentials in Environment Variables.")
         return
 
-   
     msg = EmailMessage()
     msg['Subject'] = 'Verify your Secure Bank Account'
     msg['From'] = sender_email
     msg['To'] = receiver_email
 
-    verification_link = f"http://127.0.0.1:8000/verify/{token}"
+    # UPDATED: Pointing to your live Render server!
+    verification_link = f"https://vault-backend-api-szxu.onrender.com/verify/{token}"
     msg.set_content(f"Welcome to Secure Bank!\n\nPlease click the secure link below to verify your identity:\n{verification_link}")
 
     try:
-        
         with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
             smtp.login(sender_email, app_password)
             smtp.send_message(msg)
@@ -99,8 +94,8 @@ def send_password_reset_email(receiver_email: str, token: str):
     msg['From'] = sender_email
     msg['To'] = receiver_email
 
-    
-    reset_link = f"http://127.0.0.1:8000/reset-password-page/{token}"
+    # UPDATED: Pointing to your live Render server!
+    reset_link = f"https://vault-backend-api-szxu.onrender.com/reset-password-page/{token}"
     msg.set_content(f"We received a request to reset your password.\n\nPlease click the secure link below to create a new password:\n{reset_link}\n\nIf you did not request this, please ignore this email.")
 
     try:
@@ -110,7 +105,6 @@ def send_password_reset_email(receiver_email: str, token: str):
         print(f"Password reset email sent to {receiver_email}!")
     except Exception as e:
         print(f"Failed to send reset email: {e}")
-
 
 
 def generate_otp() -> str:
