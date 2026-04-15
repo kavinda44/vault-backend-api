@@ -150,6 +150,22 @@ def login(request: LoginRequest, fastapi_req: Request):
         "email": user.get("email", "") 
     }
 
+# --- NEW ENDPOINT ADDED HERE ---
+@app.get("/refresh-account/{username}")
+def refresh_account(username: str):
+    """Fetches the freshest data straight from the database to update the frontend UI."""
+    user = database.get_user(username)
+    
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+        
+    return {
+        "username": user["username"],
+        "account_number": user["account_number"],
+        "balance": user["balance"]
+    }
+# -------------------------------
+
 @app.post("/user/update")
 def update_profile(req: ProfileUpdateRequest):
     conn = sqlite3.connect("secure_bank.db")
