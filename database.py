@@ -6,7 +6,6 @@ def init_db():
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
 
-    # UPDATED: Added nic, account_number, and balance
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -22,17 +21,21 @@ def init_db():
         )
     ''')
 
+    # UPGRADED: Now stores date, description, and status for global history!
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS transactions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             sender_account TEXT NOT NULL,
             recipient_account TEXT NOT NULL,
-            encrypted_amount TEXT NOT NULL
+            encrypted_amount TEXT NOT NULL,
+            description TEXT NOT NULL,
+            date TEXT NOT NULL,
+            status TEXT NOT NULL
         )
     ''')
     conn.commit()
     conn.close()
-    print("Database initialized successfully with Core Banking features.")
+    print("Database initialized successfully with Global History features.")
 
 def create_user(username: str, email: str, nic: str, account_number: str, initial_balance: float, password_hash: str, token: str):
     conn = sqlite3.connect(DB_NAME)
@@ -66,6 +69,7 @@ def get_user(username: str):
     return None
 
 def get_user_email(username: str):
+    """Fetches the user's email address for OTP delivery."""
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
     cursor.execute("SELECT email FROM users WHERE username = ?", (username,))
@@ -95,8 +99,9 @@ def verify_user_in_db(token: str):
     conn.close()
     return False
 
-def execute_secure_transfer(sender_username: str, recipient_account: str, amount: float, encrypted_amount: str):
-    """Moves money safely and logs the encrypted payload."""
+# UPGRADED: Accepts description and date_str to log globally
+def execute_secure_transfer(sender_username: str, recipient_account: str, amount: float, encrypted_amount: str, description: str, date_str: str):
+    """Moves money safely and logs the global transaction record."""
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
     try:
@@ -110,9 +115,11 @@ def execute_secure_transfer(sender_username: str, recipient_account: str, amount
         # Add to Recipient
         cursor.execute("UPDATE users SET balance = balance + ? WHERE account_number = ?", (amount, recipient_account))
 
-        # Save Encrypted Log
-        cursor.execute("INSERT INTO transactions (sender_account, recipient_account, encrypted_amount) VALUES (?, ?, ?)", 
-                       (sender_account, recipient_account, encrypted_amount))
+        # Save Encrypted Log with Details
+        cursor.execute("""
+            INSERT INTO transactions (sender_account, recipient_account, encrypted_amount, description, date, status) 
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (sender_account, recipient_account, encrypted_amount, description, date_str, "Settled"))
         
         conn.commit()
         return True
@@ -123,7 +130,6 @@ def execute_secure_transfer(sender_username: str, recipient_account: str, amount
     finally:
         conn.close()
         
-
 def set_reset_token(email: str, token: str) -> bool:
     """Saves a password reset token for a specific user."""
     conn = sqlite3.connect(DB_NAME)
@@ -145,12 +151,3 @@ def update_password_with_token(token: str, new_password_hash: str) -> bool:
     conn.commit()
     conn.close()
     return rows_updated > 0
-
-def get_user_email(username: str):
-    """Fetches the user's email address for OTP delivery."""
-    conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
-    cursor.execute("SELECT email FROM users WHERE username = ?", (username,))
-    user = cursor.fetchone()
-    conn.close()
-    return user[0] if user else None

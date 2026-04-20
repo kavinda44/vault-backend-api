@@ -7,12 +7,13 @@ from fastapi.responses import HTMLResponse
 import time
 import random
 import sqlite3 
+from datetime import datetime
 
 # Initialize the API and Database
 app = FastAPI(title="Secure Banking Prototype API")
 database.init_db() 
 
-# Configure CORS (Securely locked to your Vercel and Local environments)
+# Configure CORS 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -38,6 +39,7 @@ class TransferRequest(BaseModel):
     username: str
     recipient_account: str
     amount: str 
+    description: str = "Quick Transfer" # UPGRADED: Added description field
 
 class VerifyTransferRequest(BaseModel):
     username: str
@@ -150,7 +152,6 @@ def login(request: LoginRequest, fastapi_req: Request):
         "email": user.get("email", "") 
     }
 
-# --- NEW ENDPOINT ADDED HERE ---
 @app.get("/refresh-account/{username}")
 def refresh_account(username: str):
     """Fetches the freshest data straight from the database to update the frontend UI."""
@@ -164,7 +165,7 @@ def refresh_account(username: str):
         "account_number": user["account_number"],
         "balance": user["balance"]
     }
-# -------------------------------
+
 
 @app.post("/user/update")
 def update_profile(req: ProfileUpdateRequest):
@@ -172,13 +173,11 @@ def update_profile(req: ProfileUpdateRequest):
     cursor = conn.cursor()
     
     try:
-        # Step A: Prevent changing to an already-taken username
         if req.new_username != req.current_username:
             cursor.execute("SELECT username FROM users WHERE username = ?", (req.new_username,))
             if cursor.fetchone():
                 raise HTTPException(status_code=400, detail="That username is already taken by another account.")
                 
-        # Step B: If they typed a NEW password, we MUST verify the old one
         if req.new_password:
             if not req.current_password:
                 raise HTTPException(status_code=400, detail="Current password is required to set a new password.")
@@ -189,7 +188,6 @@ def update_profile(req: ProfileUpdateRequest):
             if not row or not security_helpers.verify_password(req.current_password, row[0]):
                 raise HTTPException(status_code=401, detail="Incorrect current password. Changes denied.")
                 
-            # Hash the new password and update both name and password (No email)
             new_hash = security_helpers.hash_password(req.new_password)
             cursor.execute("""
                 UPDATE users 
@@ -198,7 +196,6 @@ def update_profile(req: ProfileUpdateRequest):
             """, (req.new_username, new_hash, req.current_username))
             
         else:
-            # Step C: If no new password was typed, JUST update the username (No email)
             cursor.execute("""
                 UPDATE users 
                 SET username = ?
@@ -215,28 +212,28 @@ def update_profile(req: ProfileUpdateRequest):
 @app.post("/transfer/request")
 def request_transfer(request: TransferRequest):
     """Step 1: Validates funds/accounts, generates OTP, and emails it."""
-    # VALIDATION 1: Does the recipient account exist?
+    
     if not database.get_user_by_account(request.recipient_account):
         raise HTTPException(status_code=404, detail="Invalid Recipient Account Number.")
-
-    # VALIDATION 2: Does the sender have enough money?
+    
     sender_data = database.get_user(request.username)
     transfer_amount = float(request.amount)
     
     if sender_data["balance"] < transfer_amount:
         raise HTTPException(status_code=400, detail="Insufficient funds.")
 
-    otp = security_helpers.generate_otp()
-    expiry = time.time() + 300 
-
     email = database.get_user_email(request.username)
     otp = security_helpers.generate_otp()
+    
+    # UPGRADED: Save the description to memory so verify can use it
     PENDING_TRANSFERS[request.username] = {
         "otp": otp,
         "recipient": request.recipient_account,
         "amount": transfer_amount,
+        "description": request.description,
         "expiry": time.time() + 300
     }
+    
     security_helpers.send_transfer_otp_email(email, otp, str(transfer_amount), request.recipient_account)
     return {"message": "OTP sent securely to your registered email."}
 
@@ -255,9 +252,17 @@ def verify_transfer(request: VerifyTransferRequest):
     
     encrypted_amount = security_helpers.encrypt_data(str(pending["amount"]))
     
-    # Actually move the money in the database
+    # Generate current date
+    current_date = datetime.now().strftime("%b %d, %Y")
+    
+    # UPGRADED: Pass the new parameters to database
     success = database.execute_secure_transfer(
-        request.username, pending["recipient"], pending["amount"], encrypted_amount
+        request.username, 
+        pending["recipient"], 
+        pending["amount"], 
+        encrypted_amount,
+        pending["description"],
+        current_date
     )
 
     if not success:
@@ -310,3 +315,47 @@ def reset_password_confirm(token: str = Form(...), new_password: str = Form(...)
         return HTMLResponse("<h2 style='text-align:center; margin-top:50px; font-family:sans-serif;'> ✅ Password updated securely! You can safely close this tab and log in to the website.</h2>")
     
     raise HTTPException(status_code=400, detail="Invalid or expired reset token.")
+
+
+# --- NEW ENDPOINT: GLOBAL HISTORY SYNCHRONIZATION ---
+@app.get("/history/{username}")
+def get_user_history(username: str):
+    """Decrypts and fetches global transaction history for a user."""
+    user = database.get_user(username)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+        
+    account_number = user["account_number"]
+    
+    conn = sqlite3.connect("secure_bank.db")
+    cursor = conn.cursor()
+    # Fetch all transactions where the user is either the sender OR the receiver
+    cursor.execute("""
+        SELECT id, sender_account, recipient_account, encrypted_amount, description, date, status 
+        FROM transactions 
+        WHERE sender_account = ? OR recipient_account = ?
+        ORDER BY id DESC
+    """, (account_number, account_number))
+    rows = cursor.fetchall()
+    conn.close()
+    
+    history = []
+    for row in rows:
+        try:
+            # Decrypt the amount payload on the fly for the UI
+            decrypted_amount = float(security_helpers.decrypt_data(row[3]))
+        except Exception as e:
+            print(f"Decryption error for TRX-{row[0]}: {e}")
+            decrypted_amount = 0.0 # Safety fallback
+            
+        history.append({
+            "id": f"TRX-{row[0]}",
+            "sender": row[1],
+            "recipient": row[2],
+            "amount": decrypted_amount,
+            "desc": row[4],
+            "date": row[5],
+            "status": row[6]
+        })
+        
+    return {"history": history}

@@ -29,13 +29,13 @@ def decrypt_data(encrypted_data: str) -> str:
     decrypted_text = cipher_suite.decrypt(encrypted_data.encode('utf-8'))
     return decrypted_text.decode('utf-8')
 
-# SECURE PROTOCOLS (Secure Mail via Brevo API - BOT-SAFE VERSION)
+# SECURE PROTOCOLS 
 def generate_verification_token() -> str:
     return secrets.token_urlsafe(32)
 
 def send_real_secure_email(receiver_email: str, token: str):
     api_key = os.getenv("BREVO_API_KEY")
-    # HARDCODED VERIFIED DOMAIN
+    
     sender_email = "support@kevincodes.tech" 
     
     if not api_key:
